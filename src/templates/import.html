@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Import contacts</h1>
+<p class="text-slate-500 mb-6">Upload an iPhone vCard (.vcf). Entries without a phone are skipped. Duplicates by phone number are skipped.</p>
+
+{% if result %}
+<div class="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 mb-6">
+  <p class="font-medium mb-1">✅ Import complete.</p>
+  <ul class="text-sm space-y-0.5">
+    <li>{{ result.imported }} imported</li>
+    <li>{{ result.skipped_no_phone }} skipped (no phone)</li>
+    <li>{{ result.skipped_dupe }} skipped (already in your contacts)</li>
+    {% if result.parse_errors %}
+    <li class="text-amber-700">{{ result.parse_errors }} entries had parse errors</li>
+    {% endif %}
+  </ul>
+  <a href="/" class="text-sm text-emerald-700 hover:underline mt-3 inline-block">← Back to dashboard</a>
+</div>
+{% endif %}
+
+<form method="post" action="/import" enctype="multipart/form-data"
+      class="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+  <div>
+    <label class="block">
+      <span class="text-sm font-medium text-slate-700">vCard file (.vcf)</span>
+      <input type="file" name="file" accept=".vcf,text/vcard,text/x-vcard,text/directory" required
+             class="mt-2 block w-full text-sm text-slate-700
+                    file:mr-3 file:py-2 file:px-4
+                    file:rounded-lg file:border-0
+                    file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+    </label>
+    <p class="text-xs text-slate-400 mt-2">
+      On iPhone: Contacts.app → tap a group → "Select All" → "Share Contacts" → save as a .vcf. Or on Mac: Contacts → ⌘A → File → Export → "Export vCard...".
+    </p>
+  </div>
+
+  {% if circles %}
+  <div>
+    <span class="text-sm font-medium text-slate-700 block mb-2">Assign imported contacts to circles (optional)</span>
+    <div class="flex flex-wrap gap-2">
+      {% for c in circles %}
+      <label class="cursor-pointer">
+        <input type="checkbox" name="circle_ids" value="{{ c.id }}" class="peer hidden">
+        <span class="chip border-2 border-transparent peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-slate-900"
+              style="background:{{ c.color }}">{{ c.name }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+    Upload &amp; import
+  </button>
+</form>
+{% endblock %}

@@ -1,9 +1,45 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-1">Hi {{ me.first_name or "there" }} 👋</h1>
-<p class="text-slate-500 mb-6">{{ total_contacts }} contact{{ "s" if total_contacts != 1 else "" }} across {{ circles|length }} circle{{ "s" if circles|length != 1 else "" }}.</p>
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Hi {{ me.first_name or "there" }} 👋</h1>
+    <p class="text-slate-500 text-sm mt-0.5">
+      {{ total_contacts }} contact{{ "s" if total_contacts != 1 else "" }} across {{ circles|length }} circle{{ "s" if circles|length != 1 else "" }}.
+    </p>
+  </div>
+  <div class="flex gap-2">
+    <a href="/contacts/new" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">+ Add</a>
+    <a href="/import"       class="px-3 py-2 rounded-lg bg-white text-slate-700 text-sm border border-slate-200 hover:bg-slate-50">📥 Import</a>
+  </div>
+</div>
 
-<section class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+{% if phoneless_count > 0 %}
+<div id="phoneless-banner"
+     class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-center gap-3">
+  <span class="text-amber-900 text-sm flex-1">
+    {{ phoneless_count }} of your contacts have no phone number.
+    Phone is now required, so they won't appear in reminders.
+  </span>
+  <form hx-post="/contacts/cleanup/no-phone"
+        hx-target="#phoneless-banner"
+        hx-swap="innerHTML"
+        hx-confirm="Delete {{ phoneless_count }} contact{{ 's' if phoneless_count != 1 else '' }} without a phone? This cannot be undone.">
+    <button class="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs hover:bg-amber-700">
+      🧹 Remove all
+    </button>
+  </form>
+</div>
+{% endif %}
+
+<section class="bg-gradient-to-br from-white to-indigo-50/40 rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
+  <div class="flex items-center justify-between mb-2">
+    <h2 class="font-medium text-slate-900">Your circles</h2>
+    <a href="/circles" class="text-sm text-indigo-600 hover:underline">Manage →</a>
+  </div>
+  {% include "_circle_viz.html" %}
+</section>
+
+<section class="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
   <h2 class="font-medium text-slate-900 mb-4">⏰ Overdue — reach out</h2>
   {% if not overdue %}
   <p class="text-slate-400 text-sm">Nobody is overdue. ✨</p>
@@ -16,8 +52,7 @@
         <span class="text-xs text-slate-400 ml-2">{{ c.circle_names or "no circle" }}</span>
       </a>
       <span class="text-xs text-slate-500">{{ c.days_since }}d / {{ c.cadence_days }}d</span>
-      <form hx-post="/contacts/{{ c.id }}/talked" hx-swap="outerHTML"
-            class="ml-2">
+      <form hx-post="/contacts/{{ c.id }}/talked" hx-swap="outerHTML" class="ml-2">
         <button class="text-sm px-3 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
           ✅ Talked
         </button>
@@ -27,29 +62,4 @@
   </ul>
   {% endif %}
 </section>
-
-<section class="bg-white rounded-xl border border-slate-200 p-5">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="font-medium text-slate-900">Your circles</h2>
-    <a href="/circles" class="text-sm text-indigo-600 hover:underline">Manage →</a>
-  </div>
-  {% if not circles %}
-  <p class="text-slate-400 text-sm">No circles yet. <a href="/circles" class="text-indigo-600">Create one →</a></p>
-  {% else %}
-  <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-    {% for c in circles %}
-    <a href="/contacts?circle={{ c.id }}"
-       class="block p-3 rounded-lg border border-slate-100 hover:border-indigo-300 hover:bg-indigo-50/40">
-      <span class="chip" style="background:{{ c.color }}">{{ c.name }}</span>
-      <p class="text-xs text-slate-500 mt-2">{{ c.member_count }} contact{{ "s" if c.member_count != 1 else "" }} · every {{ c.default_cadence_days }}d</p>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-</section>
-
-<div class="mt-6 flex gap-3">
-  <a href="/contacts/new" class="inline-block px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">+ Add contact</a>
-  <a href="/circles" class="inline-block px-4 py-2 rounded-lg bg-white text-slate-700 text-sm border border-slate-200 hover:bg-slate-50">+ New circle</a>
-</div>
 {% endblock %}

@@ -98,7 +98,7 @@ async def new_contact_form(
 async def create_contact(
     full_name: str = Form(...),
     nickname: str = Form(""),
-    phone: str = Form(""),
+    phone: str = Form(...),
     telegram_handle: str = Form(""),
     birthday: str = Form(""),
     notes: str = Form(""),
@@ -107,6 +107,8 @@ async def create_contact(
 ):
     if not full_name.strip():
         raise HTTPException(status_code=400, detail="full_name required")
+    if not phone.strip():
+        raise HTTPException(status_code=400, detail="phone required")
     async with connect() as db:
         cur = await db.execute(
             """
@@ -114,7 +116,7 @@ async def create_contact(
                                   telegram_handle, birthday, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, full_name.strip(), nickname or None, phone or None,
+            (user_id, full_name.strip(), nickname or None, phone.strip(),
              telegram_handle or None, birthday or None, notes or None),
         )
         contact_id = cur.lastrowid
@@ -131,6 +133,35 @@ async def create_contact(
             )
         await db.commit()
     return RedirectResponse(url=f"/contacts/{contact_id}", status_code=303)
+
+
+@router.post("/cleanup/no-phone")
+async def cleanup_no_phone(
+    request: Request,
+    user_id: int = Depends(get_current_user_id),
+):
+    async with connect() as db:
+        cur = await db.execute(
+            """
+            DELETE FROM contacts
+            WHERE user_id = ?
+              AND (phone IS NULL OR TRIM(phone) = '')
+            """,
+            (user_id,),
+        )
+        await db.commit()
+        deleted = cur.rowcount or 0
+
+    if request.headers.get("HX-Request"):
+        return Response(
+            status_code=200,
+            content=(
+                f'<span class="text-green-600 text-sm">'
+                f"🧹 Removed {deleted} contact{'s' if deleted != 1 else ''} without a phone.</span>"
+            ),
+            media_type="text/html",
+        )
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.get("/{contact_id}", response_class=HTMLResponse)
@@ -212,13 +243,15 @@ async def update_contact(
     contact_id: int,
     full_name: str = Form(...),
     nickname: str = Form(""),
-    phone: str = Form(""),
+    phone: str = Form(...),
     telegram_handle: str = Form(""),
     birthday: str = Form(""),
     notes: str = Form(""),
     circle_ids: list[int] = Form(default=[]),
     user_id: int = Depends(get_current_user_id),
 ):
+    if not phone.strip():
+        raise HTTPException(status_code=400, detail="phone required")
     async with connect() as db:
         if not await _user_owns_contact(db, user_id, contact_id):
             raise HTTPException(status_code=404)
@@ -229,7 +262,7 @@ async def update_contact(
                 birthday = ?, notes = ?
             WHERE id = ?
             """,
-            (full_name.strip(), nickname or None, phone or None,
+            (full_name.strip(), nickname or None, phone.strip(),
              telegram_handle or None, birthday or None, notes or None,
              contact_id),
         )

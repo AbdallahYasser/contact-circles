@@ -1,0 +1,77 @@
+{# Concentric Dunbar rings — inline SVG, no JS deps. Tooltip + click = link. #}
+<div class="relative w-full">
+  {% if not viz.has_data %}
+  <div class="text-center py-12 text-slate-400 text-sm">
+    No contacts yet. Add some or
+    <a href="/import" class="text-indigo-600 hover:underline">import from your iPhone</a>.
+  </div>
+  {% else %}
+  <svg viewBox="-{{ viz.viewbox_half }} -{{ viz.viewbox_half }} {{ viz.viewbox_half * 2 }} {{ viz.viewbox_half * 2 }}"
+       class="w-full max-w-[640px] mx-auto block"
+       role="img" aria-label="Your contact circles">
+    <defs>
+      <radialGradient id="centerGlow">
+        <stop offset="0%"  stop-color="#a78bfa" stop-opacity="0.7"/>
+        <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="0" cy="0" r="50" fill="url(#centerGlow)"/>
+
+    {# Ring outlines #}
+    {% for ring in viz.rings %}
+    <circle cx="0" cy="0" r="{{ ring.ring_r }}"
+            fill="none"
+            stroke="{{ ring.color }}" stroke-opacity="0.25"
+            stroke-width="1.5"
+            stroke-dasharray="4 4"/>
+    <text x="0" y="{{ -ring.ring_r - 6 }}"
+          text-anchor="middle" font-size="9"
+          fill="{{ ring.color }}" fill-opacity="0.75">
+      {{ ring.name }}{% if ring.cadence %} · {{ ring.cadence }}d{% endif %}
+    </text>
+    {% endfor %}
+
+    {# Center "you" #}
+    <circle cx="0" cy="0" r="14" fill="#1e293b"/>
+    <text x="0" y="4" text-anchor="middle" font-size="14" fill="white">🟣</text>
+
+    {# Contact dots #}
+    {% for ring in viz.rings %}
+      {% for c in ring.contacts %}
+      <a href="/contacts/{{ c.id }}">
+        <g class="contact-dot" tabindex="0">
+          {# Halo rings for extra circles (outer-first so primary dot draws on top) #}
+          {% for color in c.extra_colors %}
+          <circle cx="{{ c.x }}" cy="{{ c.y }}"
+                  r="{{ 8 + loop.index * 2 }}"
+                  fill="none" stroke="{{ color }}" stroke-width="1.5" stroke-opacity="0.85"/>
+          {% endfor %}
+          <circle cx="{{ c.x }}" cy="{{ c.y }}" r="5.5"
+                  fill="{{ ring.color }}" stroke="white" stroke-width="1.5">
+            <title>{{ c.name }}{% if c.extra_colors %} · in multiple circles{% endif %}</title>
+          </circle>
+        </g>
+      </a>
+      {% endfor %}
+    {% endfor %}
+  </svg>
+
+  {# Legend #}
+  <div class="flex flex-wrap justify-center gap-2 mt-4">
+    {% for ring in viz.rings %}
+    <a href="{% if ring.id %}/contacts?circle={{ ring.id }}{% else %}/contacts{% endif %}"
+       class="flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-white border border-slate-200 hover:border-slate-300">
+      <span class="inline-block w-3 h-3 rounded-full" style="background:{{ ring.color }}"></span>
+      <span class="text-slate-700">{{ ring.name }}</span>
+      <span class="text-slate-400">{{ ring.contacts|length }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .contact-dot { cursor: pointer; transition: transform 0.12s ease; transform-origin: var(--ox, 0) var(--oy, 0); transform-box: fill-box; }
+  .contact-dot:hover circle:last-of-type { r: 7.5; }
+  .contact-dot:hover { filter: drop-shadow(0 1px 3px rgba(0,0,0,0.25)); }
+</style>
