@@ -11,11 +11,20 @@ services:
       - contact-circles-data:/data
     labels:
       - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
       - traefik.http.routers.contact-circles-http.entryPoints=http
-      - 'traefik.http.routers.contact-circles-http.rule=Host(`yoss0gsgsc8wo8ckog4k840k.13.63.67.90.sslip.io`)'
+      - 'traefik.http.routers.contact-circles-http.rule=Host(`circles.bode1.site`)'
+      - traefik.http.routers.contact-circles-http.middlewares=gzip
       - traefik.http.routers.contact-circles-http.service=contact-circles-svc
+      - traefik.http.routers.contact-circles-https.entryPoints=https
+      - 'traefik.http.routers.contact-circles-https.rule=Host(`circles.bode1.site`)'
+      - traefik.http.routers.contact-circles-https.middlewares=gzip
+      - traefik.http.routers.contact-circles-https.service=contact-circles-svc
+      - traefik.http.routers.contact-circles-https.tls=true
+      - traefik.http.routers.contact-circles-https.tls.certresolver=letsencrypt
       - traefik.http.services.contact-circles-svc.loadbalancer.server.port=8080
-      - 'caddy_0=http://yoss0gsgsc8wo8ckog4k840k.13.63.67.90.sslip.io'
+      - 'caddy_0=https://circles.bode1.site'
       - 'caddy_0.handle_path=/*'
       - 'caddy_0.handle_path.0_reverse_proxy={{upstreams 8080}}'
       - caddy_ingress_network=coolify
