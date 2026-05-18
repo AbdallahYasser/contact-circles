@@ -9,6 +9,16 @@ services:
       - coolify
     volumes:
       - contact-circles-data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.contact-circles-http.entryPoints=http
+      - 'traefik.http.routers.contact-circles-http.rule=Host(`yoss0gsgsc8wo8ckog4k840k.13.63.67.90.sslip.io`)'
+      - traefik.http.routers.contact-circles-http.service=contact-circles-svc
+      - traefik.http.services.contact-circles-svc.loadbalancer.server.port=8080
+      - 'caddy_0=http://yoss0gsgsc8wo8ckog4k840k.13.63.67.90.sslip.io'
+      - 'caddy_0.handle_path=/*'
+      - 'caddy_0.handle_path.0_reverse_proxy={{upstreams 8080}}'
+      - caddy_ingress_network=coolify
 
 networks:
   coolify:
