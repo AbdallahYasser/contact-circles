@@ -8,8 +8,9 @@
   <p class="font-medium mb-1">✅ Import complete.</p>
   <ul class="text-sm space-y-0.5">
     <li>{{ result.imported }} imported</li>
+    <li>{{ result.merged }} merged into existing contacts</li>
     <li>{{ result.skipped_no_phone }} skipped (no phone)</li>
-    <li>{{ result.skipped_dupe }} skipped (already in your contacts)</li>
+    <li>{{ result.skipped_dupe_in_file }} skipped (duplicate within file)</li>
     {% if result.parse_errors %}
     <li class="text-amber-700">{{ result.parse_errors }} entries had parse errors</li>
     {% endif %}

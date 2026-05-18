@@ -13,6 +13,15 @@
   </div>
 </div>
 
+{% if dup_count > 0 %}
+<a href="/duplicates"
+   class="block bg-violet-50 border border-violet-200 rounded-2xl p-4 mb-6 hover:bg-violet-100 transition">
+  <span class="text-violet-900 text-sm font-medium">
+    👥 {{ dup_count }} possible duplicate{{ "s" if dup_count != 1 else "" }} — review →
+  </span>
+</a>
+{% endif %}
+
 {% if phoneless_count > 0 %}
 <div id="phoneless-banner"
      class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-center gap-3">

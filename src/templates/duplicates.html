@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Possible duplicates</h1>
+<p class="text-slate-500 text-sm mb-6">
+  Contacts that share a phone or email. Pick the one to keep — the rest will be merged into it.
+</p>
+
+{% if not clusters %}
+<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+  No duplicates found. ✨
+</div>
+{% endif %}
+
+{% for cl in clusters %}
+<section class="bg-white rounded-2xl border border-slate-200 p-5 mb-5">
+  <p class="text-xs text-slate-400 mb-3">
+    Match on <span class="font-medium uppercase">{{ cl.kind }}</span>: <code>{{ cl.value_norm }}</code>
+  </p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% for c in cl.candidates %}
+    <div class="border border-slate-200 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <a href="/contacts/{{ c.id }}" class="font-medium text-slate-900 hover:text-indigo-600">
+          {{ c.full_name }}
+        </a>
+        <span class="text-xs text-slate-400">id {{ c.id }}</span>
+      </div>
+      {% if c.nickname %}<p class="text-xs text-slate-500 mb-2">aka {{ c.nickname }}</p>{% endif %}
+
+      <ul class="text-sm space-y-0.5 mb-3">
+        {% for p in c.phones %}
+        <li class="text-slate-600">
+          <span class="text-xs uppercase text-slate-400 mr-1">{{ p.label or "ph" }}</span>{{ p.value }}
+        </li>
+        {% endfor %}
+        {% for e in c.emails %}
+        <li class="text-slate-600">
+          <span class="text-xs uppercase text-slate-400 mr-1">{{ e.label or "em" }}</span>{{ e.value }}
+        </li>
+        {% endfor %}
+      </ul>
+
+      {% if c.circles %}
+      <div class="flex flex-wrap gap-1 mb-3">
+        {% for ci in c.circles %}
+        <span class="chip" style="background:{{ ci.color }}">{{ ci.name }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <form method="post" action="/duplicates/merge" class="mt-2"
+            onsubmit="return confirm('Keep {{ c.full_name }} and merge {{ cl.candidates|length - 1 }} other contact(s) into it? This deletes the others.')">
+        <input type="hidden" name="winner_id" value="{{ c.id }}">
+        {% for other in cl.candidates %}{% if other.id != c.id %}
+        <input type="hidden" name="loser_ids" value="{{ other.id }}">
+        {% endif %}{% endfor %}
+        <button class="w-full px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+          ★ Keep this — merge {{ cl.candidates|length - 1 }} into it
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+
+  <form method="post" action="/duplicates/dismiss" class="mt-4 text-right">
+    {% for c in cl.candidates %}
+    <input type="hidden" name="contact_ids" value="{{ c.id }}">
+    {% endfor %}
+    <button class="text-xs text-slate-500 hover:text-slate-800 hover:underline">
+      Dismiss — these are different people
+    </button>
+  </form>
+</section>
+{% endfor %}
+{% endblock %}

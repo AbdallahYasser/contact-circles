@@ -20,9 +20,36 @@
   </div>
 </div>
 
-<div class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
-  <dl class="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
-    {% if contact.phone %}<dt class="text-slate-500">Phone</dt><dd>{{ contact.phone }}</dd>{% endif %}
+<div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6 space-y-4">
+  {% if contact.phones %}
+  <div>
+    <dt class="text-xs uppercase tracking-wide text-slate-400 mb-1">Phones</dt>
+    <ul class="space-y-1">
+      {% for p in contact.phones %}
+      <li class="flex items-center gap-2 text-sm">
+        <span class="inline-block min-w-14 text-slate-400 text-xs uppercase">{{ p.label or "other" }}{% if p.is_primary %} ★{% endif %}</span>
+        <a href="tel:{{ p.value }}" class="text-slate-900 hover:text-indigo-600">{{ p.value }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if contact.emails %}
+  <div>
+    <dt class="text-xs uppercase tracking-wide text-slate-400 mb-1">Emails</dt>
+    <ul class="space-y-1">
+      {% for e in contact.emails %}
+      <li class="flex items-center gap-2 text-sm">
+        <span class="inline-block min-w-14 text-slate-400 text-xs uppercase">{{ e.label or "other" }}</span>
+        <a href="mailto:{{ e.value }}" class="text-slate-900 hover:text-indigo-600">{{ e.value }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <dl class="grid grid-cols-2 gap-y-3 gap-x-4 text-sm pt-2 border-t border-slate-100">
     {% if contact.telegram_handle %}<dt class="text-slate-500">Telegram</dt><dd>@{{ contact.telegram_handle }}</dd>{% endif %}
     {% if contact.birthday %}<dt class="text-slate-500">Birthday</dt><dd>{{ contact.birthday }}</dd>{% endif %}
     <dt class="text-slate-500">Last talked</dt>

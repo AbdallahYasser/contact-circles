@@ -1,4 +1,4 @@
-"""Tests for the phoneless-cleanup route + phone-required enforcement."""
+"""Tests for phoneless-cleanup + phone-required enforcement."""
 from src.db import connect
 from src.routes.contacts import cleanup_no_phone, create_contact
 from fastapi import HTTPException
@@ -50,17 +50,20 @@ async def test_cleanup_deletes_only_phoneless_for_this_user():
         ) as cur:
             names_b = sorted(r["full_name"] for r in await cur.fetchall())
 
-    assert names_a == ["WithPhone"]  # only the one with a real phone survives
-    assert names_b == ["OtherUserNoPhone"]  # other user untouched
+    assert names_a == ["WithPhone"]
+    assert names_b == ["OtherUserNoPhone"]
 
 
-async def test_create_contact_rejects_empty_phone():
+async def test_create_contact_rejects_when_no_phones():
     uid = await _seed_user()
     with pytest.raises(HTTPException) as exc:
         await create_contact(
             full_name="X",
             nickname="",
-            phone="   ",
+            phone_value=["", "   "],
+            phone_label=["mobile", "home"],
+            email_value=[],
+            email_label=[],
             telegram_handle="",
             birthday="",
             notes="",

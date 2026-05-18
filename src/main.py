@@ -16,6 +16,7 @@ from src.db import init_db
 from src.routes import circles as circles_routes
 from src.routes import contacts as contacts_routes
 from src.routes import dashboard as dashboard_routes
+from src.routes import duplicates as duplicates_routes
 from src.routes import import_ as import_routes
 from src.routes import login as login_routes
 
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(contacts_routes.router)
     app.include_router(circles_routes.router)
     app.include_router(import_routes.router)
+    app.include_router(duplicates_routes.router)
 
     @app.get("/healthz", response_class=HTMLResponse)
     async def healthz():

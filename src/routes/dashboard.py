@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 from src import auth
 from src.reminders import overdue_contacts_for_user
+from src.routes.duplicates import count_duplicates_for_user
 from src.db import connect
 
 router = APIRouter()
@@ -114,6 +115,7 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
 
     overdue = await overdue_contacts_for_user(user_id, limit=20)
     viz = await _build_viz(user_id)
+    dup_count = await count_duplicates_for_user(user_id)
 
     async with connect() as db:
         async with db.execute(
@@ -158,6 +160,7 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
             "circles": circles,
             "total_contacts": total_contacts,
             "phoneless_count": phoneless_count,
+            "dup_count": dup_count,
             "me": me,
             "viz": viz,
         },

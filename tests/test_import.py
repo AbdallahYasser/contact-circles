@@ -1,11 +1,33 @@
-"""Tests for vCard import — skip-no-phone, dedupe, circle assignment."""
+"""Tests for vCard import — multi-phone/email extraction + auto-merge."""
+import io
+
+import vobject
+from fastapi import UploadFile
+
 from src.db import connect
+from src.normalize import normalize_phone
 from src.routes.import_ import (
-    _extract_first_phone,
+    _extract_emails,
     _extract_name,
-    _normalize_phone,
+    _extract_phones,
+    import_post,
 )
 
+
+class FakeRequest:
+    headers: dict = {}
+
+
+VCARD_MULTI = """BEGIN:VCARD
+VERSION:3.0
+FN:Multi Person
+TEL;TYPE=CELL:+20 100 111 1111
+TEL;TYPE=HOME:+20 200 222 2222
+TEL;TYPE=WORK:+20 300 333 3333
+EMAIL;TYPE=HOME:multi@home.com
+EMAIL;TYPE=WORK:multi@work.com
+END:VCARD
+"""
 
 VCARD_SAMPLE = """BEGIN:VCARD
 VERSION:3.0
@@ -30,107 +52,176 @@ END:VCARD
 
 
 def test_normalize_phone_strips_punctuation():
-    assert _normalize_phone("+20 100 123 4567") == "201001234567"
-    assert _normalize_phone("(02) 233-44-556") == "0223344556"
-    assert _normalize_phone(None) == ""
-    assert _normalize_phone("   ") == ""
+    assert normalize_phone("+20 100 123 4567") == "201001234567"
+    assert normalize_phone("(02) 233-44-556") == "0223344556"
+    assert normalize_phone(None) == ""
 
 
-def test_parse_vcard_extracts_name_and_phone():
-    import vobject
-    cards = list(vobject.readComponents(VCARD_SAMPLE))
-    assert len(cards) == 4
-    assert _extract_name(cards[0]) == "Ahmed Hassan"
-    assert _extract_first_phone(cards[0]) == "+20 100 123 4567"
-    assert _extract_first_phone(cards[1]) is None  # no phone
+def test_parse_vcard_extracts_all_phones_with_labels():
+    card = next(vobject.readComponents(VCARD_MULTI))
+    assert _extract_name(card) == "Multi Person"
+    phones = _extract_phones(card)
+    assert [p[0] for p in phones] == ["+20 100 111 1111", "+20 200 222 2222", "+20 300 333 3333"]
+    assert [p[1] for p in phones] == ["mobile", "home", "work"]
+    emails = _extract_emails(card)
+    assert [e[0] for e in emails] == ["multi@home.com", "multi@work.com"]
+    assert [e[1] for e in emails] == ["home", "work"]
 
 
-async def test_import_skips_no_phone_and_dedupes(tmp_path):
-    """End-to-end test against the route logic without HTTP layer."""
-    from src.routes.import_ import import_post
-    from fastapi import UploadFile
-    import io
-
-    # Seed a user.
+async def _seed_user(tg_id=555) -> int:
     async with connect() as db:
         cur = await db.execute(
-            "INSERT INTO users (telegram_id, first_name) VALUES (?, ?)",
-            (555, "T"),
+            "INSERT INTO users (telegram_id, first_name) VALUES (?, ?)", (tg_id, "T")
         )
-        user_id = cur.lastrowid
         await db.commit()
+        return cur.lastrowid
 
-    # Build a fake UploadFile.
-    class FakeRequest:
-        headers: dict = {}
 
-    file = UploadFile(filename="test.vcf", file=io.BytesIO(VCARD_SAMPLE.encode()))
-
-    # Run twice: first import + immediate re-import (everything should dedupe).
-    await import_post(request=FakeRequest(), file=file, circle_ids=[], user_id=user_id)
+async def test_import_stores_all_phones_and_emails_for_new_contact():
+    uid = await _seed_user()
+    file = UploadFile(filename="m.vcf", file=io.BytesIO(VCARD_MULTI.encode()))
+    await import_post(request=FakeRequest(), file=file, circle_ids=[], user_id=uid)
 
     async with connect() as db:
         async with db.execute(
-            "SELECT full_name, phone FROM contacts WHERE user_id = ? ORDER BY id", (user_id,)
+            "SELECT id FROM contacts WHERE user_id = ?", (uid,)
         ) as cur:
-            rows = [dict(r) for r in await cur.fetchall()]
+            cid = (await cur.fetchone())["id"]
+        async with db.execute(
+            "SELECT label FROM contact_phones WHERE contact_id = ? ORDER BY id", (cid,)
+        ) as cur:
+            assert [r["label"] for r in await cur.fetchall()] == ["mobile", "home", "work"]
+        async with db.execute(
+            "SELECT label FROM contact_emails WHERE contact_id = ? ORDER BY id", (cid,)
+        ) as cur:
+            assert [r["label"] for r in await cur.fetchall()] == ["home", "work"]
 
-    names = [r["full_name"] for r in rows]
-    # 4 vCards: Ahmed (imported), No Phone (skipped), Sara (imported), Ahmed dup (skipped: same digits)
-    assert "Ahmed Hassan" in names
-    assert "Sara" in names
-    assert "No Phone Person" not in names
-    assert "Ahmed Duplicate" not in names
-    assert len(rows) == 2
 
-    # Re-import: zero new contacts (dedupe by phone).
-    file2 = UploadFile(filename="test.vcf", file=io.BytesIO(VCARD_SAMPLE.encode()))
-    await import_post(request=FakeRequest(), file=file2, circle_ids=[], user_id=user_id)
+async def test_import_skips_no_phone_and_dedupes_within_file():
+    uid = await _seed_user()
+    file = UploadFile(filename="s.vcf", file=io.BytesIO(VCARD_SAMPLE.encode()))
+    await import_post(request=FakeRequest(), file=file, circle_ids=[], user_id=uid)
 
     async with connect() as db:
         async with db.execute(
-            "SELECT COUNT(*) AS n FROM contacts WHERE user_id = ?", (user_id,)
+            "SELECT full_name FROM contacts WHERE user_id = ?", (uid,)
         ) as cur:
-            assert (await cur.fetchone())["n"] == 2
+            names = sorted(r["full_name"] for r in await cur.fetchall())
+    # Ahmed Hassan + Sara only; "No Phone" skipped, "Ahmed Duplicate" deduped within file
+    assert names == ["Ahmed Hassan", "Sara"]
 
 
-async def test_import_assigns_circles():
-    from src.routes.import_ import import_post
-    from fastapi import UploadFile
-    import io
-
+async def test_reimport_auto_merges_into_existing_by_phone():
+    """First create a contact via the form, then re-import a vCard with same number,
+    different name. It should merge into the existing record, not create a new one."""
+    uid = await _seed_user(tg_id=556)
+    # Manually create the existing contact + a phone row.
     async with connect() as db:
         cur = await db.execute(
-            "INSERT INTO users (telegram_id, first_name) VALUES (?, ?)",
-            (666, "T"),
+            "INSERT INTO contacts (user_id, full_name, phone) VALUES (?, ?, ?)",
+            (uid, "Ahmed Hassan", "+20 100 123 4567"),
         )
-        user_id = cur.lastrowid
-        cur = await db.execute(
-            "INSERT INTO circles (user_id, name) VALUES (?, ?)",
-            (user_id, "Family"),
+        existing_id = cur.lastrowid
+        await db.execute(
+            """
+            INSERT INTO contact_phones (contact_id, value, value_norm, label, is_primary)
+            VALUES (?, ?, ?, 'mobile', 1)
+            """,
+            (existing_id, "+20 100 123 4567", "201001234567"),
         )
-        family_id = cur.lastrowid
         await db.commit()
 
-    class FakeRequest:
-        headers: dict = {}
+    # vCard uses same digits "+20-100-123-4567" -> normalized "201001234567"
+    file = UploadFile(
+        filename="m.vcf",
+        file=io.BytesIO(
+            b"BEGIN:VCARD\nVERSION:3.0\nFN:Ahmed H.\nTEL;TYPE=HOME:+20-100-123-4567\nEMAIL:ah@x.com\nEND:VCARD\n"
+        ),
+    )
+    await import_post(request=FakeRequest(), file=file, circle_ids=[], user_id=uid)
+
+    async with connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) AS n FROM contacts WHERE user_id = ?", (uid,)
+        ) as cur:
+            assert (await cur.fetchone())["n"] == 1  # merged, not inserted
+        async with db.execute(
+            "SELECT full_name FROM contacts WHERE id = ?", (existing_id,)
+        ) as cur:
+            # Name preserved — we don't overwrite.
+            assert (await cur.fetchone())["full_name"] == "Ahmed Hassan"
+        async with db.execute(
+            "SELECT value FROM contact_emails WHERE contact_id = ?", (existing_id,)
+        ) as cur:
+            assert [r["value"] for r in await cur.fetchall()] == ["ah@x.com"]
+
+
+async def test_reimport_auto_merges_by_email_when_phone_differs():
+    uid = await _seed_user(tg_id=557)
+    async with connect() as db:
+        cur = await db.execute(
+            "INSERT INTO contacts (user_id, full_name, phone) VALUES (?, ?, ?)",
+            (uid, "Ali Old", "111"),
+        )
+        existing_id = cur.lastrowid
+        await db.execute(
+            "INSERT INTO contact_phones (contact_id, value, value_norm, label, is_primary) VALUES (?, ?, ?, ?, 1)",
+            (existing_id, "111", "111", "mobile"),
+        )
+        await db.execute(
+            "INSERT INTO contact_emails (contact_id, value, value_norm, label) VALUES (?, ?, ?, ?)",
+            (existing_id, "ali@x.com", "ali@x.com", "home"),
+        )
+        await db.commit()
+
+    # Different phone, same email -> should merge.
+    file = UploadFile(
+        filename="e.vcf",
+        file=io.BytesIO(
+            b"BEGIN:VCARD\nVERSION:3.0\nFN:Ali New\nTEL:999\nEMAIL:ALI@X.COM\nEND:VCARD\n"
+        ),
+    )
+    await import_post(request=FakeRequest(), file=file, circle_ids=[], user_id=uid)
+
+    async with connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) AS n FROM contacts WHERE user_id = ?", (uid,)
+        ) as cur:
+            assert (await cur.fetchone())["n"] == 1
+        async with db.execute(
+            "SELECT value FROM contact_phones WHERE contact_id = ? ORDER BY id", (existing_id,)
+        ) as cur:
+            phones = [r["value"] for r in await cur.fetchall()]
+            assert "111" in phones and "999" in phones
+
+
+async def test_import_attaches_imported_to_circles_even_when_merging():
+    uid = await _seed_user(tg_id=558)
+    async with connect() as db:
+        cur = await db.execute(
+            "INSERT INTO circles (user_id, name) VALUES (?, ?)", (uid, "School")
+        )
+        school = cur.lastrowid
+        cur = await db.execute(
+            "INSERT INTO contacts (user_id, full_name, phone) VALUES (?, ?, ?)",
+            (uid, "X", "555"),
+        )
+        existing = cur.lastrowid
+        await db.execute(
+            "INSERT INTO contact_phones (contact_id, value, value_norm, label, is_primary) VALUES (?, ?, ?, 'mobile', 1)",
+            (existing, "555", "555"),
+        )
+        await db.commit()
 
     file = UploadFile(
         filename="x.vcf",
-        file=io.BytesIO(b"BEGIN:VCARD\nVERSION:3.0\nFN:X\nTEL:0111\nEND:VCARD\n"),
+        file=io.BytesIO(b"BEGIN:VCARD\nVERSION:3.0\nFN:X New\nTEL:555\nEND:VCARD\n"),
     )
     await import_post(
-        request=FakeRequest(), file=file, circle_ids=[family_id], user_id=user_id
+        request=FakeRequest(), file=file, circle_ids=[school], user_id=uid
     )
-
     async with connect() as db:
         async with db.execute(
-            """
-            SELECT cc.circle_id FROM contact_circles cc
-            JOIN contacts c ON c.id = cc.contact_id
-            WHERE c.user_id = ?
-            """,
-            (user_id,),
+            "SELECT circle_id FROM contact_circles WHERE contact_id = ?", (existing,)
         ) as cur:
-            rows = [r["circle_id"] for r in await cur.fetchall()]
-    assert rows == [family_id]
+            assert [r["circle_id"] for r in await cur.fetchall()] == [school]

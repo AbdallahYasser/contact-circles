@@ -18,7 +18,16 @@ async def fresh_db():
     from src.db import init_db, connect
     # Drop existing tables so each test starts clean.
     async with connect() as db:
-        for t in ("interactions", "contact_circles", "contacts", "circles", "users"):
+        for t in (
+            "interactions",
+            "contact_circles",
+            "contact_phones",
+            "contact_emails",
+            "dismissed_duplicates",
+            "contacts",
+            "circles",
+            "users",
+        ):
             await db.execute(f"DROP TABLE IF EXISTS {t}")
         await db.commit()
     await init_db()

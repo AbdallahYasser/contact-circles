@@ -75,10 +75,46 @@ _SCHEMA = [
         FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS contact_phones (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        contact_id  INTEGER NOT NULL,
+        value       TEXT    NOT NULL,
+        value_norm  TEXT    NOT NULL,
+        label       TEXT,
+        is_primary  INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (contact_id, value_norm),
+        FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS contact_emails (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        contact_id  INTEGER NOT NULL,
+        value       TEXT    NOT NULL,
+        value_norm  TEXT    NOT NULL,
+        label       TEXT,
+        UNIQUE (contact_id, value_norm),
+        FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dismissed_duplicates (
+        user_id      INTEGER NOT NULL,
+        contact_a_id INTEGER NOT NULL,
+        contact_b_id INTEGER NOT NULL,
+        dismissed_at TEXT    NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (user_id, contact_a_id, contact_b_id)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_contacts_user      ON contacts(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_circles_user       ON circles(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_contact_circles_c  ON contact_circles(circle_id)",
     "CREATE INDEX IF NOT EXISTS idx_interactions_c     ON interactions(contact_id, occurred_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_phones_norm        ON contact_phones(value_norm)",
+    "CREATE INDEX IF NOT EXISTS idx_phones_contact     ON contact_phones(contact_id)",
+    "CREATE INDEX IF NOT EXISTS idx_emails_norm        ON contact_emails(value_norm)",
+    "CREATE INDEX IF NOT EXISTS idx_emails_contact     ON contact_emails(contact_id)",
 ]
 
 
@@ -89,7 +125,40 @@ async def init_db() -> None:
         for stmt in _SCHEMA:
             await db.execute(stmt)
         await db.commit()
+    await _backfill_phones()
     logger.info("Database initialised at %s", config.DB_PATH)
+
+
+async def _backfill_phones() -> None:
+    """Idempotent: for any contact with a phone but no contact_phones row, insert one."""
+    from src.normalize import normalize_phone
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT c.id, c.phone FROM contacts c
+            WHERE c.phone IS NOT NULL AND TRIM(c.phone) != ''
+              AND NOT EXISTS (SELECT 1 FROM contact_phones p WHERE p.contact_id = c.id)
+            """
+        ) as cur:
+            rows = await cur.fetchall()
+        inserted = 0
+        for r in rows:
+            norm = normalize_phone(r["phone"])
+            if not norm:
+                continue
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO contact_phones
+                    (contact_id, value, value_norm, label, is_primary)
+                VALUES (?, ?, ?, 'mobile', 1)
+                """,
+                (r["id"], r["phone"].strip(), norm),
+            )
+            inserted += 1
+        if inserted:
+            await db.commit()
+            logger.info("Backfilled %d contact_phones rows from contacts.phone", inserted)
 
 
 @asynccontextmanager

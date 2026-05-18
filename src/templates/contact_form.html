@@ -5,7 +5,7 @@
 
 <form method="post"
       action="{% if is_edit %}/contacts/{{ contact.id }}/edit{% else %}/contacts{% endif %}"
-      class="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+      class="bg-white rounded-2xl border border-slate-200 p-5 space-y-5">
 
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <label class="block">
@@ -19,12 +19,6 @@
              class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
     </label>
     <label class="block">
-      <span class="text-sm text-slate-600">Phone *</span>
-      <input name="phone" required inputmode="tel"
-             value="{{ contact.phone if is_edit and contact.phone else '' }}"
-             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
-    </label>
-    <label class="block">
       <span class="text-sm text-slate-600">Telegram @</span>
       <input name="telegram_handle" value="{{ contact.telegram_handle if is_edit and contact.telegram_handle else '' }}"
              class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
@@ -34,6 +28,55 @@
       <input name="birthday" type="date" value="{{ contact.birthday if is_edit and contact.birthday else '' }}"
              class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
     </label>
+  </div>
+
+  {# ---------------- Phones ---------------- #}
+  <div>
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium text-slate-700">Phones * <span class="text-slate-400 font-normal">(at least one)</span></span>
+      <button type="button" onclick="addRow('phones')" class="text-xs text-indigo-600 hover:underline">+ Add phone</button>
+    </div>
+    <div id="phones" class="space-y-2">
+      {% set seed_phones = phones if phones else [{'value': '', 'label': 'mobile'}] %}
+      {% for p in seed_phones %}
+      <div class="flex gap-2 items-center contact-row">
+        <input name="phone_value" required inputmode="tel" placeholder="+20 100 …"
+               value="{{ p.value or '' }}"
+               class="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+        <select name="phone_label" class="px-2 py-2 border border-slate-200 rounded-lg bg-white text-sm">
+          {% for lab in phone_labels %}
+          <option value="{{ lab }}" {% if p.label == lab %}selected{% endif %}>{{ lab|capitalize }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" onclick="removeRow(this, 'phones')"
+                class="px-2 py-2 text-slate-400 hover:text-red-600">✕</button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# ---------------- Emails ---------------- #}
+  <div>
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium text-slate-700">Emails <span class="text-slate-400 font-normal">(optional)</span></span>
+      <button type="button" onclick="addRow('emails')" class="text-xs text-indigo-600 hover:underline">+ Add email</button>
+    </div>
+    <div id="emails" class="space-y-2">
+      {% for e in emails %}
+      <div class="flex gap-2 items-center contact-row">
+        <input name="email_value" type="email" placeholder="name@example.com"
+               value="{{ e.value or '' }}"
+               class="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+        <select name="email_label" class="px-2 py-2 border border-slate-200 rounded-lg bg-white text-sm">
+          {% for lab in email_labels %}
+          <option value="{{ lab }}" {% if e.label == lab %}selected{% endif %}>{{ lab|capitalize }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" onclick="removeRow(this, 'emails')"
+                class="px-2 py-2 text-slate-400 hover:text-red-600">✕</button>
+      </div>
+      {% endfor %}
+    </div>
   </div>
 
   <label class="block">
@@ -67,4 +110,48 @@
        class="px-4 py-2 rounded-lg bg-white border border-slate-200 text-sm hover:bg-slate-50">Cancel</a>
   </div>
 </form>
+
+{# Hidden row templates for the "+ Add" buttons to clone #}
+<template id="tpl-phones">
+  <div class="flex gap-2 items-center contact-row">
+    <input name="phone_value" inputmode="tel" placeholder="+20 100 …"
+           class="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    <select name="phone_label" class="px-2 py-2 border border-slate-200 rounded-lg bg-white text-sm">
+      {% for lab in phone_labels %}<option value="{{ lab }}">{{ lab|capitalize }}</option>{% endfor %}
+    </select>
+    <button type="button" onclick="removeRow(this, 'phones')"
+            class="px-2 py-2 text-slate-400 hover:text-red-600">✕</button>
+  </div>
+</template>
+<template id="tpl-emails">
+  <div class="flex gap-2 items-center contact-row">
+    <input name="email_value" type="email" placeholder="name@example.com"
+           class="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    <select name="email_label" class="px-2 py-2 border border-slate-200 rounded-lg bg-white text-sm">
+      {% for lab in email_labels %}<option value="{{ lab }}">{{ lab|capitalize }}</option>{% endfor %}
+    </select>
+    <button type="button" onclick="removeRow(this, 'emails')"
+            class="px-2 py-2 text-slate-400 hover:text-red-600">✕</button>
+  </div>
+</template>
+
+<script>
+  function addRow(kind) {
+    const tpl = document.getElementById('tpl-' + kind);
+    const container = document.getElementById(kind);
+    container.appendChild(tpl.content.cloneNode(true));
+  }
+  function removeRow(btn, kind) {
+    const container = document.getElementById(kind);
+    const row = btn.closest('.contact-row');
+    if (!row) return;
+    // For phones, keep at least one input present.
+    if (kind === 'phones' && container.querySelectorAll('.contact-row').length <= 1) {
+      const inp = row.querySelector('input');
+      if (inp) inp.value = '';
+      return;
+    }
+    row.remove();
+  }
+</script>
 {% endblock %}

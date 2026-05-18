@@ -5,9 +5,89 @@ from fastapi.templating import Jinja2Templates
 
 from src.auth import get_current_user_id
 from src.db import connect
+from src.normalize import normalize_email, normalize_phone
 
 router = APIRouter(prefix="/contacts")
 templates = Jinja2Templates(directory="src/templates")
+
+PHONE_LABELS = ("mobile", "home", "work", "other")
+EMAIL_LABELS = ("home", "work", "other")
+
+
+async def _phones_for_contact(db, contact_id: int) -> list[dict]:
+    async with db.execute(
+        """
+        SELECT id, value, label, is_primary
+        FROM contact_phones WHERE contact_id = ?
+        ORDER BY is_primary DESC, id ASC
+        """,
+        (contact_id,),
+    ) as cur:
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def _emails_for_contact(db, contact_id: int) -> list[dict]:
+    async with db.execute(
+        """
+        SELECT id, value, label
+        FROM contact_emails WHERE contact_id = ?
+        ORDER BY id ASC
+        """,
+        (contact_id,),
+    ) as cur:
+        return [dict(r) for r in await cur.fetchall()]
+
+
+def _zip_pairs(values: list[str], labels: list[str], allowed: tuple) -> list[tuple[str, str | None]]:
+    """Pair up parallel form arrays, drop empty values, normalize labels."""
+    pairs: list[tuple[str, str | None]] = []
+    for i, raw in enumerate(values):
+        if not raw or not raw.strip():
+            continue
+        lab = labels[i].strip().lower() if i < len(labels) and labels[i] else None
+        if lab not in allowed:
+            lab = None
+        pairs.append((raw.strip(), lab))
+    return pairs
+
+
+async def _replace_phones(db, contact_id: int, pairs: list[tuple[str, str | None]]) -> str:
+    """Wipe existing phones and rewrite from `pairs`. Returns the primary phone value."""
+    await db.execute("DELETE FROM contact_phones WHERE contact_id = ?", (contact_id,))
+    primary = ""
+    seen_norms: set[str] = set()
+    for i, (val, lab) in enumerate(pairs):
+        norm = normalize_phone(val)
+        if not norm or norm in seen_norms:
+            continue
+        seen_norms.add(norm)
+        await db.execute(
+            """
+            INSERT INTO contact_phones (contact_id, value, value_norm, label, is_primary)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (contact_id, val, norm, lab, 1 if not primary else 0),
+        )
+        if not primary:
+            primary = val
+    return primary
+
+
+async def _replace_emails(db, contact_id: int, pairs: list[tuple[str, str | None]]) -> None:
+    await db.execute("DELETE FROM contact_emails WHERE contact_id = ?", (contact_id,))
+    seen: set[str] = set()
+    for val, lab in pairs:
+        norm = normalize_email(val)
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        await db.execute(
+            """
+            INSERT INTO contact_emails (contact_id, value, value_norm, label)
+            VALUES (?, ?, ?, ?)
+            """,
+            (contact_id, val, norm, lab),
+        )
 
 
 async def _user_owns_contact(db, user_id: int, contact_id: int) -> bool:
@@ -90,7 +170,16 @@ async def new_contact_form(
             circles = [dict(r) for r in await cur.fetchall()]
     return templates.TemplateResponse(
         "contact_form.html",
-        {"request": request, "contact": None, "selected_ids": set(), "circles": circles},
+        {
+            "request": request,
+            "contact": None,
+            "selected_ids": set(),
+            "circles": circles,
+            "phones": [],
+            "emails": [],
+            "phone_labels": PHONE_LABELS,
+            "email_labels": EMAIL_LABELS,
+        },
     )
 
 
@@ -98,7 +187,10 @@ async def new_contact_form(
 async def create_contact(
     full_name: str = Form(...),
     nickname: str = Form(""),
-    phone: str = Form(...),
+    phone_value: list[str] = Form(default=[]),
+    phone_label: list[str] = Form(default=[]),
+    email_value: list[str] = Form(default=[]),
+    email_label: list[str] = Form(default=[]),
     telegram_handle: str = Form(""),
     birthday: str = Form(""),
     notes: str = Form(""),
@@ -107,8 +199,14 @@ async def create_contact(
 ):
     if not full_name.strip():
         raise HTTPException(status_code=400, detail="full_name required")
-    if not phone.strip():
-        raise HTTPException(status_code=400, detail="phone required")
+
+    phone_pairs = _zip_pairs(phone_value, phone_label, PHONE_LABELS)
+    email_pairs = _zip_pairs(email_value, email_label, EMAIL_LABELS)
+    if not phone_pairs:
+        raise HTTPException(status_code=400, detail="at least one phone is required")
+
+    primary = phone_pairs[0][0]
+
     async with connect() as db:
         cur = await db.execute(
             """
@@ -116,10 +214,17 @@ async def create_contact(
                                   telegram_handle, birthday, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, full_name.strip(), nickname or None, phone.strip(),
+            (user_id, full_name.strip(), nickname or None, primary,
              telegram_handle or None, birthday or None, notes or None),
         )
         contact_id = cur.lastrowid
+        actual_primary = await _replace_phones(db, contact_id, phone_pairs)
+        await _replace_emails(db, contact_id, email_pairs)
+        if actual_primary and actual_primary != primary:
+            await db.execute(
+                "UPDATE contacts SET phone = ? WHERE id = ?",
+                (actual_primary, contact_id),
+            )
         for cid in circle_ids:
             async with db.execute(
                 "SELECT 1 FROM circles WHERE id = ? AND user_id = ?",
@@ -179,6 +284,8 @@ async def contact_detail(
             contact = dict(await cur.fetchone())
 
         contact["circles"] = await _circles_for_contact(db, contact_id)
+        contact["phones"] = await _phones_for_contact(db, contact_id)
+        contact["emails"] = await _emails_for_contact(db, contact_id)
 
         async with db.execute(
             "SELECT id, name, color FROM circles WHERE user_id = ? ORDER BY name",
@@ -222,6 +329,8 @@ async def edit_contact_form(
         ) as cur:
             contact = dict(await cur.fetchone())
         contact["circles"] = await _circles_for_contact(db, contact_id)
+        phones = await _phones_for_contact(db, contact_id)
+        emails = await _emails_for_contact(db, contact_id)
         async with db.execute(
             "SELECT id, name, color FROM circles WHERE user_id = ? ORDER BY name",
             (user_id,),
@@ -234,6 +343,10 @@ async def edit_contact_form(
             "contact": contact,
             "selected_ids": {c["id"] for c in contact["circles"]},
             "circles": all_circles,
+            "phones": phones,
+            "emails": emails,
+            "phone_labels": PHONE_LABELS,
+            "email_labels": EMAIL_LABELS,
         },
     )
 
@@ -243,15 +356,23 @@ async def update_contact(
     contact_id: int,
     full_name: str = Form(...),
     nickname: str = Form(""),
-    phone: str = Form(...),
+    phone_value: list[str] = Form(default=[]),
+    phone_label: list[str] = Form(default=[]),
+    email_value: list[str] = Form(default=[]),
+    email_label: list[str] = Form(default=[]),
     telegram_handle: str = Form(""),
     birthday: str = Form(""),
     notes: str = Form(""),
     circle_ids: list[int] = Form(default=[]),
     user_id: int = Depends(get_current_user_id),
 ):
-    if not phone.strip():
-        raise HTTPException(status_code=400, detail="phone required")
+    phone_pairs = _zip_pairs(phone_value, phone_label, PHONE_LABELS)
+    email_pairs = _zip_pairs(email_value, email_label, EMAIL_LABELS)
+    if not phone_pairs:
+        raise HTTPException(status_code=400, detail="at least one phone is required")
+
+    primary = phone_pairs[0][0]
+
     async with connect() as db:
         if not await _user_owns_contact(db, user_id, contact_id):
             raise HTTPException(status_code=404)
@@ -262,10 +383,17 @@ async def update_contact(
                 birthday = ?, notes = ?
             WHERE id = ?
             """,
-            (full_name.strip(), nickname or None, phone.strip(),
+            (full_name.strip(), nickname or None, primary,
              telegram_handle or None, birthday or None, notes or None,
              contact_id),
         )
+        actual_primary = await _replace_phones(db, contact_id, phone_pairs)
+        await _replace_emails(db, contact_id, email_pairs)
+        if actual_primary and actual_primary != primary:
+            await db.execute(
+                "UPDATE contacts SET phone = ? WHERE id = ?",
+                (actual_primary, contact_id),
+            )
         await db.execute(
             "DELETE FROM contact_circles WHERE contact_id = ?", (contact_id,)
         )
