@@ -1,0 +1,19 @@
+services:
+  contact-circles:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8080"
+    networks:
+      - coolify
+    volumes:
+      - contact-circles-data:/data
+
+networks:
+  coolify:
+    external: true
+    name: coolify
+
+volumes:
+  contact-circles-data:

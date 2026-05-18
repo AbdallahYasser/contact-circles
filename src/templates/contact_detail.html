@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-start justify-between mb-5">
+  <div>
+    <h1 class="text-2xl font-semibold">{{ contact.full_name }}</h1>
+    {% if contact.nickname %}<p class="text-slate-500">aka {{ contact.nickname }}</p>{% endif %}
+    <div class="flex gap-1 mt-2">
+      {% for c in contact.circles %}
+      <span class="chip" style="background:{{ c.color }}">{{ c.name }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="flex gap-2">
+    <a href="/contacts/{{ contact.id }}/edit"
+       class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm hover:bg-slate-50">Edit</a>
+    <form method="post" action="/contacts/{{ contact.id }}/delete"
+          onsubmit="return confirm('Delete this contact?')">
+      <button class="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-100 text-sm hover:bg-red-100">Delete</button>
+    </form>
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+  <dl class="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+    {% if contact.phone %}<dt class="text-slate-500">Phone</dt><dd>{{ contact.phone }}</dd>{% endif %}
+    {% if contact.telegram_handle %}<dt class="text-slate-500">Telegram</dt><dd>@{{ contact.telegram_handle }}</dd>{% endif %}
+    {% if contact.birthday %}<dt class="text-slate-500">Birthday</dt><dd>{{ contact.birthday }}</dd>{% endif %}
+    <dt class="text-slate-500">Last talked</dt>
+    <dd>{{ contact.last_contacted_at or "—" }}</dd>
+  </dl>
+  {% if contact.notes %}
+  <p class="mt-4 pt-4 border-t border-slate-100 text-slate-700 whitespace-pre-wrap">{{ contact.notes }}</p>
+  {% endif %}
+  <form hx-post="/contacts/{{ contact.id }}/talked" hx-swap="outerHTML" class="mt-4">
+    <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+      ✅ I just talked to them
+    </button>
+  </form>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 p-5">
+  <h2 class="font-medium mb-3">History</h2>
+  {% if not interactions %}
+  <p class="text-slate-400 text-sm">No interactions logged yet.</p>
+  {% else %}
+  <ul class="space-y-2">
+    {% for it in interactions %}
+    <li class="text-sm flex gap-3">
+      <span class="text-slate-400 w-40">{{ it.occurred_at }}</span>
+      <span class="font-medium">{{ it.kind }}</span>
+      {% if it.note %}<span class="text-slate-600">— {{ it.note }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

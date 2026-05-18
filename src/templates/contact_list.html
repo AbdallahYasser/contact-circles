@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-xl font-semibold">Contacts</h1>
+  <a href="/contacts/new" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">+ Add contact</a>
+</div>
+
+<div class="flex flex-wrap gap-2 mb-5">
+  <a href="/contacts"
+     class="text-sm px-3 py-1 rounded-full border {% if selected_circle is none %}bg-slate-900 text-white border-slate-900{% else %}bg-white text-slate-600 border-slate-200{% endif %}">
+    All
+  </a>
+  {% for c in circles %}
+  <a href="/contacts?circle={{ c.id }}"
+     class="text-sm px-3 py-1 rounded-full border
+            {% if selected_circle == c.id %}text-white{% else %}bg-white text-slate-700 border-slate-200{% endif %}"
+     style="{% if selected_circle == c.id %}background:{{ c.color }};border-color:{{ c.color }}{% endif %}">
+    {{ c.name }}
+  </a>
+  {% endfor %}
+</div>
+
+{% if not contacts %}
+<p class="text-slate-400">No contacts yet. <a href="/contacts/new" class="text-indigo-600">Add one →</a></p>
+{% else %}
+<ul class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+  {% for c in contacts %}
+  <li class="p-4 flex items-center gap-3">
+    <a href="/contacts/{{ c.id }}" class="flex-1 font-medium text-slate-900 hover:text-indigo-600">
+      {{ c.full_name }}
+      {% if c.nickname %}<span class="text-slate-400 text-sm">({{ c.nickname }})</span>{% endif %}
+    </a>
+    <div class="flex gap-1">
+      {% for cc in c.circles %}
+      <span class="chip" style="background:{{ cc.color }}">{{ cc.name }}</span>
+      {% endfor %}
+    </div>
+    <span class="text-xs text-slate-400 w-32 text-right">
+      {{ c.last_contacted_at or "—" }}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

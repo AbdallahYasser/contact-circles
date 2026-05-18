@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-6">Circles</h1>
+
+<form method="post" action="/circles" class="bg-white rounded-xl border border-slate-200 p-5 mb-8">
+  <h2 class="font-medium mb-3">New circle</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+    <label class="block sm:col-span-2">
+      <span class="text-sm text-slate-600">Name</span>
+      <input name="name" required placeholder="Close Friends"
+             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    </label>
+    <label class="block">
+      <span class="text-sm text-slate-600">Cadence (days)</span>
+      <input name="default_cadence_days" type="number" min="1" value="30"
+             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    </label>
+    <label class="block">
+      <span class="text-sm text-slate-600">Color</span>
+      <input name="color" type="color" value="#6366f1"
+             class="mt-1 h-10 w-full border border-slate-200 rounded-lg">
+    </label>
+  </div>
+  <button class="mt-4 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">+ Add circle</button>
+</form>
+
+{% if not circles %}
+<p class="text-slate-400">No circles yet.</p>
+{% else %}
+<ul class="space-y-3">
+  {% for c in circles %}
+  <li class="bg-white rounded-xl border border-slate-200 p-4">
+    <form method="post" action="/circles/{{ c.id }}/edit"
+          class="flex flex-wrap items-end gap-3">
+      <span class="chip h-7" style="background:{{ c.color }}">{{ c.name }}</span>
+      <label class="block">
+        <span class="text-xs text-slate-500">Name</span>
+        <input name="name" value="{{ c.name }}"
+               class="mt-0.5 px-2 py-1 border border-slate-200 rounded">
+      </label>
+      <label class="block">
+        <span class="text-xs text-slate-500">Cadence (days)</span>
+        <input name="default_cadence_days" type="number" min="1" value="{{ c.default_cadence_days }}"
+               class="mt-0.5 px-2 py-1 border border-slate-200 rounded w-24">
+      </label>
+      <label class="block">
+        <span class="text-xs text-slate-500">Color</span>
+        <input name="color" type="color" value="{{ c.color }}"
+               class="mt-0.5 h-8 w-16 border border-slate-200 rounded">
+      </label>
+      <span class="text-xs text-slate-400">{{ c.member_count }} contact{{ "s" if c.member_count != 1 else "" }}</span>
+      <span class="flex-1"></span>
+      <button class="px-3 py-1.5 rounded bg-slate-900 text-white text-sm">Save</button>
+    </form>
+    <form method="post" action="/circles/{{ c.id }}/delete"
+          onsubmit="return confirm('Delete this circle? Members stay; only the circle goes away.')"
+          class="mt-2">
+      <button class="text-xs text-red-600 hover:underline">Delete circle</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

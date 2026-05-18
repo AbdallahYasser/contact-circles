@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+{% set is_edit = contact is not none %}
+<h1 class="text-xl font-semibold mb-5">{{ "Edit contact" if is_edit else "New contact" }}</h1>
+
+<form method="post"
+      action="{% if is_edit %}/contacts/{{ contact.id }}/edit{% else %}/contacts{% endif %}"
+      class="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <label class="block">
+      <span class="text-sm text-slate-600">Full name *</span>
+      <input name="full_name" required value="{{ contact.full_name if is_edit else '' }}"
+             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    </label>
+    <label class="block">
+      <span class="text-sm text-slate-600">Nickname</span>
+      <input name="nickname" value="{{ contact.nickname if is_edit and contact.nickname else '' }}"
+             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    </label>
+    <label class="block">
+      <span class="text-sm text-slate-600">Phone</span>
+      <input name="phone" value="{{ contact.phone if is_edit and contact.phone else '' }}"
+             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    </label>
+    <label class="block">
+      <span class="text-sm text-slate-600">Telegram @</span>
+      <input name="telegram_handle" value="{{ contact.telegram_handle if is_edit and contact.telegram_handle else '' }}"
+             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    </label>
+    <label class="block">
+      <span class="text-sm text-slate-600">Birthday</span>
+      <input name="birthday" type="date" value="{{ contact.birthday if is_edit and contact.birthday else '' }}"
+             class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+    </label>
+  </div>
+
+  <label class="block">
+    <span class="text-sm text-slate-600">Notes</span>
+    <textarea name="notes" rows="3"
+              class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">{{ contact.notes if is_edit and contact.notes else '' }}</textarea>
+  </label>
+
+  <div>
+    <span class="text-sm text-slate-600 block mb-2">Circles (a contact can be in multiple)</span>
+    {% if not circles %}
+    <p class="text-sm text-slate-400">No circles yet. <a href="/circles" class="text-indigo-600">Create one →</a></p>
+    {% else %}
+    <div class="flex flex-wrap gap-2">
+      {% for c in circles %}
+      <label class="cursor-pointer">
+        <input type="checkbox" name="circle_ids" value="{{ c.id }}"
+               {% if c.id in selected_ids %}checked{% endif %}
+               class="peer hidden">
+        <span class="chip border-2 border-transparent peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-slate-900"
+              style="background:{{ c.color }}">{{ c.name }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="flex gap-2 pt-2">
+    <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">Save</button>
+    <a href="{% if is_edit %}/contacts/{{ contact.id }}{% else %}/contacts{% endif %}"
+       class="px-4 py-2 rounded-lg bg-white border border-slate-200 text-sm hover:bg-slate-50">Cancel</a>
+  </div>
+</form>
+{% endblock %}
